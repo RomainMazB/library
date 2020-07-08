@@ -102,7 +102,34 @@ trait AttachOneOrMany
      */
     public function addEagerConstraints(array $models)
     {
-        parent::addEagerConstraints($models);
+        /*
+         * Fixes attachOne and attachMany relationships on PostgreSQL
+         * See issue #5200 https://github.com/octobercms/october/issues/5200
+         */
+
+        // Only applies with pgsql database driver on system_files table
+        if(
+            $this->query->getQuery()->grammar instanceof PostgresGrammar
+            &&
+            $this->foreignKey === 'system_files.attachment_id'
+        ) {
+            // Force the whereIn grammar to be used instead of whereIntegerInRaw
+            $whereIn = 'whereIn';
+
+            // Cast all IDs to string
+            $keys = array_map(
+                function($key) {
+                    return (string)$key;
+                },
+                $this->getKeys($models, $this->localKey)
+            );
+
+            $this->query->{$whereIn}($this->foreignKey, $keys);
+
+            $this->query->where($this->morphType, $this->morphClass);
+        } else {
+            parent::addEagerConstraints($models);
+        }
 
         $this->query->where('field', $this->relationName);
     }
